@@ -120,6 +120,10 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# IntelliJ IDEA
+.idea/
+*.iml
+
 # mypy
 .mypy_cache/
 .dmypy.json
