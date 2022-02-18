@@ -20,6 +20,7 @@ class H5Saver(object):
     """
 
     def __init__(self, file_name=None, folder_path='.', max_frames=100, variable_prop={}, chunks_size=None, **kwargs):
+        self.h5file = None
         self.file_name = file_name  # name of h5 file, if None, the name defaults to 'ImagingData_<Year><Month><Day>_<Hour><Minutes><Second>.h5'
         self.folder_path = folder_path  # path to folder to store the h5 file
         self.frames_dset = None  # This variable will store the h5 dataset handler for saving frames
@@ -33,7 +34,6 @@ class H5Saver(object):
         self.max_frames = max_frames  # the max amount of frames that can be stored in a dataset before extend_dataset() is needed
         self.max_frames_set = max_frames  # default max frames value upon dataset creation
         self.dataset_titles = ('frames',)
-        self.chunks_size = chunks_size  # (1, #, #), No bigger than 1 MiB
         self.setting = kwargs  # NOT BEING USED YET
 
     def save_image(self, img: ImageData):
@@ -82,10 +82,9 @@ class H5Saver(object):
         shape = (self.max_frames,) + self.frames_dest_prop['shape']
         max_shape = (None,) + self.frames_dest_prop['shape']
         dt = np.dtype(self.frames_dest_prop['dtype'])
-        chunks = self.cal_chunks(self.frames_dest_prop['shape'], dt)
-        print(chunks)
-        # print('Frames dataset #{} created!\n\r'.format(self.ndset))
-        dset = self.h5file.create_dataset(name=dset_name, shape=shape, maxshape=max_shape, dtype=dt, chunks=True)
+        chunks_size = self.cal_chunks(self.frames_dest_prop['shape'], dt)
+
+        dset = self.h5file.create_dataset(name=dset_name, shape=shape, maxshape=max_shape, dtype=dt, chunks=chunks_size)
         dset.attrs['title'] = 'frames'
         dset.attrs['dataset number'] = self.ndset
 
@@ -116,9 +115,7 @@ class H5Saver(object):
                 self.frames_dset.attrs[
                     prop] = prop_dset.ref  # link the properties datasets to the attributions of frames datasets
         self.h5file.flush()
-        # print("data flushed!!!")
-        # print('Saved HDF5 file size: {:.2f} MB'.format((os.path.getsize(self.folder_path + os.path.sep + self.file_name)/1024/1024)))
-
+        
     def extend_dataset(self):
         # double the size of all datasets
         self.max_frames *= 2
@@ -154,21 +151,21 @@ class H5Saver(object):
         self.stop()
 
     # UTILITY FUNCTIONS
-
     @staticmethod
     def cal_chunks(frame_shape, dtype):
-        # No bigger than 1 MB (depent on cache)
-        # (1, frame_size[0], frame_[1]), load data frame by frame
-        # 1. Larger chunks for a given dataset size reduce the size of the chunk B-tree, making it faster to find and load chunks.
-        # 2. Larger chunks also increase the chance that you’ll read data into memory you won’t use.
-        # 3. The HDF5 chunk cache can only hold a finite number of chunks. Chunks bigger than 1 MiB don’t even participate in the cache.
-        a, b = frame_shape
-        dt_size = np.dtype(dtype).itemsize # bytes
-        size = a * b * dt_size
-        while size > 1024 ** 2:
-            a //= 2
-            size = a * b * dt_size
-        chunks = (1, a, b)
-        return chunks
-
-        pass
+        # No bigger than 1 MB (depend on cache)
+        shape = np.array(frame_shape)
+        dt_size = np.dtype(dtype).itemsize  # bytes
+        size = np.prod(frame_shape) * dt_size
+        for n in (1, 2, 3, 5):
+            for i in range(len(frame_shape)):
+                a, b = divmod(shape[i], n)
+                if b == 0:
+                    shape[i] = a
+            size = np.prod(shape) * dt_size
+            if size < 1024 ** 2:
+                break
+        if size > 1024 ** 2:
+            return True
+        else:
+            return 1, *shape
