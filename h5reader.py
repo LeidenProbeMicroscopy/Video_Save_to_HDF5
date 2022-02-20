@@ -8,6 +8,7 @@ properties dataset: 'title', 'dataset number'
 
 import numpy as np
 import h5py
+import bisect
 
 
 class Frames(object):
@@ -47,7 +48,10 @@ class H5Reader(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, *excinfo):
+    def __exit__(self, *exc_info):
+        self.close()
+
+    def close(self):
         self.h5file.close()
 
     # Frame generator
@@ -68,7 +72,7 @@ class H5Reader(object):
 
     # Get data from file
     def get_dataset(self, number, title='frames'):
-        def find(name, obj):
+        def find(_, obj):
             if obj.attrs.get('title') == title and obj.attrs.get('dataset number') == number:
                 return obj
 
@@ -117,6 +121,26 @@ class H5Reader(object):
         dset_index = index - self.index_array[dset_number - 1] if dset_number > 0 else index
         return dset_number, dset_index
 
+    def convert_index_1(self, index):
+        """
+        convert the global index to dset_number and dset_index (index in a dataset        )
+        :param index: index for all datasets
+        :return: (dset_number, dset_index)
+        """
+        left, right = 0, len(self.index_array) - 1
+        while left < right:
+            mid = (left + right) // 2
+            if self.index_array[mid] < index:
+                left = mid + 1
+            elif self.index_array[mid] > index:
+                right = mid
+            else:
+                left = mid + 1
+                break
+        dset_number = left
+        dset_index = index - self.index_array[dset_number - 1] if dset_number > 0 else index
+        return dset_number, dset_index
+
     def convert_dset_loc(self, dset_number, dset_index):
         """
         convert dset_number, dset_index to a global index
@@ -133,19 +157,16 @@ class H5Reader(object):
                 index_array[dset.attrs['dataset number']] = index_temp
         return index_array
 
-
     # TODO
     # Generate video
     def video(self, *args):
         if len(args) == 0:
             start, end = 0, self.h5file.attrs['total frames']
         elif len(args) == 1:
+            assert args < self.h5file.attrs['total frame dataset'], 'out of index'
             dset_number = args
-            if dset_number > self.h5file.attrs['total frame dataset'] - 1:
-                raise IndexError('Dataset index out of range')
         elif len(args) == 2:
+            assert args[1] < self.h5file.attrs['total frames'], 'out of index'
             start, end = args
-            if end > self.h5file.attrs['total frames']:
-                raise IndexError('Frame index out of range')
         else:
             raise ValueError

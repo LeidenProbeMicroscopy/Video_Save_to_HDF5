@@ -4,7 +4,7 @@ from h5saver import *
 from h5reader import *
 
 
-def test():
+def test_writer():
     # 1) init
     now = time.strftime("%Y-%m-%d-%H_%M_%S", time.localtime(time.time()))
     h5path = 'test'
@@ -12,12 +12,10 @@ def test():
     fpath = h5path + os.path.sep + h5name
     variable_prop_dict = {'exposure time': 'uint16', 'time': 'float64'}
 
-    # h5saver = H5Saver(file_name=h5name, folder_path=h5path, variable_prop = variable_prop_dict)
-    # h5saver.start() # make the file handles for h5 files
     # 2) create images
     img_set = []
     img_info_1 = (((1500, 2048), 'uint16'),
-                  ((1500, 2048), 'uint8'),
+                  ((600, 2048), 'uint8'),
                   ((1500, 2048), 'uint16'))
     img_info_2 = (((1500, 2048), 'uint16'),
                   ((1500, 2048), 'uint8'),
@@ -45,6 +43,10 @@ def test():
     print("Saved file information:")
     with h5py.File(fpath, 'r') as hf:
         hf.visititems(print)
+        print('Chunks size of frame dataset:')
+        for k in hf['Capture data'].keys():
+            if k != 'Properties':
+                print('{} : {}'.format(k, hf['Capture data'][k].chunks))
         print(hf.attrs.keys())
 
     # 5) Finally, print our conclusions
@@ -61,29 +63,25 @@ def test_reader():
     print(file_list)
     file_name = os.path.join(file_path, file_list[-1])
     print(file_name)
-    hf = h5py.File(file_name, 'r')
-    for k,v in hf.attrs.items():
-        print(k, v)
-    hf.close()
+    # hf = h5py.File(file_name, 'r')
+    # for k, v in hf.attrs.items():
+    #     print(k, v)
+    # hf.close()
+    with H5Reader(file_name) as h5reader:
+        # print((hf["Capture data/Frames dataset #0"][1] == ret[1]).all())
+        # print(h5reader.get_frame_properties(dset_number=0, dset_index=0))
+        # print(h5reader.get_frame_properties(0))
+        # print(h5reader.get_frame(0))
+        # print(h5reader.get_frame(dset_number=0, dset_index=0))
 
-    h5reader = H5Reader(file_name)
-    # ret = h5reader.find_dataset(title='frames', number=0)
-    # print(ret[1])
-    # print((hf["Capture data/Frames dataset #0"][1] == ret[1]).all())
-    # print(h5reader.get_frame_properties(dset_number=0, dset_index=0))
-    # print(h5reader.get_frame_properties(0))
-    # print(h5reader.get_frame(0))
-    # print(h5reader.get_frame(dset_number=0, dset_index=0))
-
-    h5reader.show_info()
-    print(h5reader.get_dataset(1))
-    for i in range(30):
-        print(h5reader.convert_index(i))
-    frames = h5reader.frames
-    frames_dset = h5reader.frames_dset(0)
-    for frame in frames_dset:
-        print(frame)
-
+        h5reader.show_info()
+        # print(h5reader.get_dataset(1))
+        for i in range(30):
+            print(h5reader.convert_index(i))
+        # frames = h5reader.frames
+        # frames_dset = h5reader.frames_dset(0)
+        # for frame in frames_dset:
+        #     print(frame)
 
 
 def clean_test_folder():
@@ -94,6 +92,6 @@ def clean_test_folder():
 
 
 if __name__ == '__main__':
-    clean_test_folder()
-    test()
-    #test_reader()
+    # clean_test_folder()
+    # test_writer()
+    test_reader()
