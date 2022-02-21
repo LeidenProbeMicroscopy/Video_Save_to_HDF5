@@ -92,6 +92,6 @@ def clean_test_folder():
 
 
 if __name__ == '__main__':
-    # clean_test_folder()
-    # test_writer()
+    clean_test_folder()
+    test_writer()
     test_reader()

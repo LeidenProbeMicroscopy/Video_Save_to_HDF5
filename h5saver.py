@@ -27,9 +27,9 @@ class H5Saver(object):
         self.prop_dset = None  # h5 dataset handler for saving the dataset properties
         self.variable_prop = variable_prop  # dict with the {key: 'dtype'} of the variable values
         self.variable_prop_dset = {}  # {k:None for k in variable_prop.keys()}     # dict that will store the variable properties for a dataset: # dicts with properties that can change over time: the user must initiate this dict with keys and datatype {key: 'dtype'} from the ImageData property class that are variable
-        self.frames_dest_prop = {'shape': None, 'dtype': None}  # dict that will store the image shape and dtype
-        self.ndset = 0  # index number of datasets inside group
-        self.nframes = 0  # index of frame inside dataset
+        self.frames_dset_prop = {'shape': None, 'dtype': None}  # dict that will store the image shape and dtype
+        self.dset_counter = 0  # counter of datasets inside group
+        self.frame_counter = 0  # counter of frame inside dataset
         self.total_frames = 0  # accumulator for the total frames saved between initializing and stop
         self.max_frames = max_frames  # the max amount of frames that can be stored in a dataset before extend_dataset() is needed
         self.max_frames_set = max_frames  # default max frames value upon dataset creation
@@ -38,35 +38,35 @@ class H5Saver(object):
 
     def save_image(self, img: ImageData):
         # 1) ADAPT h5 dataset to incoming data: if image shape or dtype changes, close the old frame dataset and create a new one
-        if self.frames_dest_prop['shape'] != img.properties['shape'] or self.frames_dest_prop['dtype'] != \
+        if self.frames_dset_prop['shape'] != img.properties['shape'] or self.frames_dset_prop['dtype'] != \
                 img.properties['dtype']:
             # 1a) Finish the saving process of last dataset
-            if self.ndset != 0:
+            if self.dset_counter != 0:
                 self.dataset_done()
             # 1b) Initialise the parameters and the new dataset
             self.max_frames = self.max_frames_set  # reset the max_frames number to the default setting value
-            self.frames_dest_prop['shape'] = img.properties['shape']
-            self.frames_dest_prop['dtype'] = img.properties['dtype']
+            self.frames_dset_prop['shape'] = img.properties['shape']
+            self.frames_dset_prop['dtype'] = img.properties['dtype']
             self.frames_dset = self.create_frames_dataset()
             for prop, dt in self.variable_prop.items():  # Create new VARIABLE properties datasets self.expo_time_dset, self.other_prop_dset
                 if prop in img.properties.keys():
                     self.variable_prop_dset[prop] = self.create_prop_dataset(prop, dt)
-            self.ndset += 1  # update total frames dataset number
-            self.nframes = 0  # initial the frame number in the new dataset
+            self.dset_counter += 1  # update total frames dataset number
+            self.frame_counter = 0  # initial the frame number in the new dataset
         # 2) extend the size of datasets if needed
-        if self.nframes >= self.max_frames:
+        if self.frame_counter >= self.max_frames:
             self.extend_dataset()
         # 3) save frames
-        self.frames_dset[self.nframes] = img.frame
+        self.frames_dset[self.frame_counter] = img.frame
         # 4) save properties
         for k, v in img.properties.items():
             if k not in self.variable_prop.keys():
-                if self.nframes == 0:
+                if self.frame_counter == 0:
                     self.frames_dset.attrs[k] = v
             else:
-                self.variable_prop_dset[k][self.nframes] = v
+                self.variable_prop_dset[k][self.frame_counter] = v
         # 5) Finally: increase number of frames by 1
-        self.nframes += 1
+        self.frame_counter += 1
 
     def create_h5file(self):
         if not os.path.exists(self.folder_path):
@@ -78,28 +78,28 @@ class H5Saver(object):
 
     def create_frames_dataset(self):
         # dataset created in the group of 'Capture data'
-        dset_name = 'Capture data/Frames dataset #{}'.format(self.ndset)
-        shape = (self.max_frames,) + self.frames_dest_prop['shape']
-        max_shape = (None,) + self.frames_dest_prop['shape']
-        dt = np.dtype(self.frames_dest_prop['dtype'])
-        chunks_size = self.cal_chunks(self.frames_dest_prop['shape'], dt)
+        dset_name = 'Capture data/Frames dataset #{}'.format(self.dset_counter)
+        shape = (self.max_frames,) + self.frames_dset_prop['shape']
+        max_shape = (None,) + self.frames_dset_prop['shape']
+        dt = np.dtype(self.frames_dset_prop['dtype'])
+        chunks_size = self.cal_chunks(self.frames_dset_prop['shape'], dt)
 
         dset = self.h5file.create_dataset(name=dset_name, shape=shape, maxshape=max_shape, dtype=dt, chunks=chunks_size)
         dset.attrs['title'] = 'frames'
-        dset.attrs['dataset number'] = self.ndset
+        dset.attrs['dataset number'] = self.dset_counter
 
         return dset
 
     def create_prop_dataset(self, prop: str, date_type: str):
         # dataset created in the group of 'Properties'
-        dset_name = 'Capture data/Properties/{} dataset #{}'.format(prop, self.ndset)
+        dset_name = 'Capture data/Properties/{} dataset #{}'.format(prop, self.dset_counter)
         shape = (self.max_frames,)
         max_shape = (None,)
         dt = np.dtype(date_type)
-        # print('Properties \'{}\' dataset #{} created!\n\r'.format(prop, self.ndset))
+        # print('Properties \'{}\' dataset #{} created!\n\r'.format(prop, self.dset_counter))
         dset = self.h5file.create_dataset(name=dset_name, shape=shape, maxshape=max_shape, dtype=dt, chunks=True)
         dset.attrs['title'] = prop
-        dset.attrs['dataset number'] = self.ndset
+        dset.attrs['dataset number'] = self.dset_counter
         if prop not in self.dataset_titles:
             self.dataset_titles += (prop,)
 
@@ -107,15 +107,15 @@ class H5Saver(object):
 
     def dataset_done(self):
         # Resize datasets size based on the actual saved frames number
-        self.frames_dset.resize(self.nframes, axis=0)
-        self.total_frames += self.nframes
+        self.frames_dset.resize(self.frame_counter, axis=0)
+        self.total_frames += self.frame_counter
         for prop, prop_dset in self.variable_prop_dset.items():
             if prop_dset:
-                prop_dset.resize(self.nframes, axis=0)
+                prop_dset.resize(self.frame_counter, axis=0)
                 self.frames_dset.attrs[
                     prop] = prop_dset.ref  # link the properties datasets to the attributions of frames datasets
         self.h5file.flush()
-        
+
     def extend_dataset(self):
         # double the size of all datasets
         self.max_frames *= 2
@@ -126,7 +126,7 @@ class H5Saver(object):
 
     def set_h5file_attrs(self):  # TODO  file attribution
         attrs_dict = {'total frames': self.total_frames,
-                      'total frame dataset': self.ndset,
+                      'total frame dataset': self.dset_counter,
                       'dataset titles': self.dataset_titles
                       }
         for k, v in attrs_dict.items():
@@ -140,7 +140,7 @@ class H5Saver(object):
         self.dataset_done()  # finish the last dataset
         self.set_h5file_attrs()
         self.h5file.close()
-        msg = '{} frames and {} frames datasets have been saved!\r\n'.format(self.total_frames, self.ndset)
+        msg = '{} frames and {} frames datasets have been saved!\r\n'.format(self.total_frames, self.dset_counter)
         print(msg)
 
     def __enter__(self):
